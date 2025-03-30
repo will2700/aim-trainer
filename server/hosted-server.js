@@ -9,7 +9,7 @@ const io = require('socket.io')(http, {
 });
 
 // Serve static files from the root directory
-app.use(express.static('../'));
+app.use(express.static(__dirname + '/..'));
 
 // Store connected players
 const players = new Map();
@@ -88,4 +88,5 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Static files being served from: ${__dirname + '/..'}`);
 }); 
