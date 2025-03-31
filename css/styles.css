@@ -92,12 +92,78 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    z-index: 1000;
+    background: rgba(0, 0, 0, 0.8);
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
-    backdrop-filter: blur(10px);
+    z-index: 1000;
+    color: white;
+}
+
+.launcher-screen .version {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    font-size: 1.2em;
+    color: #888;
+}
+
+.launcher-screen h1 {
+    font-size: 3em;
+    margin-bottom: 40px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.launcher-screen .controls {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 30px;
+    border-radius: 10px;
+    width: 80%;
+    max-width: 500px;
+}
+
+.launcher-screen .control-group {
+    margin-bottom: 20px;
+}
+
+.launcher-screen label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 1.1em;
+}
+
+.launcher-screen select,
+.launcher-screen input[type="range"] {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+    color: white;
+    font-size: 1em;
+}
+
+.launcher-screen select option {
+    background: #333;
+    color: white;
+}
+
+.launcher-screen #playButton {
+    margin-top: 30px;
+    padding: 15px 40px;
+    font-size: 1.2em;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.launcher-screen #playButton:hover {
+    background: #45a049;
 }
 
 .launcher-content {

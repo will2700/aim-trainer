@@ -149,6 +149,11 @@ socket.on('playerDisconnected', (playerId) => {
     }
 });
 
+// Update sensitivity controls
+let mouseSensitivity = 1.0; // Default sensitivity
+const MIN_SENSITIVITY = 0.25; // -4x
+const MAX_SENSITIVITY = 4.0;  // +4x
+
 // Start the game when the page loads
 window.addEventListener('load', function() {
   // Create the initial launcher screen
@@ -179,94 +184,69 @@ function createCheckerboardTexture(size = 1, divisions = 8) {
 }
 
 function createLauncherScreen() {
-  // Remove any existing launcher screens first
-  const existingScreens = document.querySelectorAll('.launcher-screen');
-  existingScreens.forEach(screen => screen.remove());
+    const launcherScreen = document.createElement('div');
+    launcherScreen.className = 'launcher-screen';
+    launcherScreen.innerHTML = `
+        <div class="version">v1.01</div>
+        <h1>Aim Trainer</h1>
+        <div class="controls">
+            <div class="control-group">
+                <label>Game Type:</label>
+                <select id="gameType">
+                    <option value="single">Single Player</option>
+                    <option value="pvp">PvP</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Time Mode:</label>
+                <select id="timeMode">
+                    <option value="free">Free</option>
+                    <option value="30">30s</option>
+                    <option value="60">60s</option>
+                    <option value="120">120s</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Movement Mode:</label>
+                <select id="movementMode">
+                    <option value="stationary">Stationary</option>
+                    <option value="moving">Moving</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Mouse Sensitivity:</label>
+                <input type="range" id="sensitivity" min="0" max="100" value="50">
+                <span id="sensitivityValue">1.0x</span>
+            </div>
+        </div>
+        <button id="playButton">Play</button>
+    `;
+    document.body.appendChild(launcherScreen);
 
-  const launcher = document.createElement('div');
-  launcher.className = 'launcher-screen';
-  launcher.innerHTML = `
-    <div class="launcher-content">
-      <h2>Aim Trainer</h2>
-      <div class="setting-item">
-        <label>Game Type:</label>
-        <select id="game-type">
-          <option value="single">Single Player</option>
-          <option value="pvp">PvP</option>
-        </select>
-      </div>
-      <div class="setting-item">
-        <label>Time Mode:</label>
-        <select id="game-mode">
-          <option value="free">Unlimited</option>
-          <option value="10">10 Seconds</option>
-          <option value="20">20 Seconds</option>
-          <option value="30">30 Seconds</option>
-          <option value="custom">Custom Time</option>
-        </select>
-      </div>
-      <div class="setting-item" id="custom-time" style="display: none;">
-        <label>Custom Time (seconds):</label>
-        <input type="number" id="custom-time-input" min="1" max="300" value="30">
-      </div>
-      <div class="setting-item">
-        <label>Game Mode:</label>
-        <select id="movement-mode">
-          <option value="moving">Moving</option>
-          <option value="static">Static</option>
-        </select>
-      </div>
-      <div class="setting-item">
-        <label>Target Speed:</label>
-        <input type="range" id="target-speed" min="0.0005" max="0.005" step="0.0001" value="${targetSpeed}">
-        <span id="target-speed-value">${targetSpeed}</span>
-      </div>
-      <button id="play-button">Play</button>
-    </div>
-  `;
-  document.body.appendChild(launcher);
+    // Add sensitivity slider event listener
+    const sensitivitySlider = document.getElementById('sensitivity');
+    const sensitivityValue = document.getElementById('sensitivityValue');
+    
+    sensitivitySlider.addEventListener('input', (e) => {
+        const value = e.target.value;
+        // Convert slider value (0-100) to sensitivity range (0.25-4.0)
+        mouseSensitivity = MIN_SENSITIVITY + (value / 100) * (MAX_SENSITIVITY - MIN_SENSITIVITY);
+        sensitivityValue.textContent = mouseSensitivity.toFixed(2) + 'x';
+    });
 
-  // Add event listeners
-  const gameTypeSelect = document.getElementById('game-type');
-  const gameModeSelect = document.getElementById('game-mode');
-  const movementModeSelect = document.getElementById('movement-mode');
-  const customTimeDiv = document.getElementById('custom-time');
-  const targetSpeedSlider = document.getElementById('target-speed');
-  const targetSpeedValue = document.getElementById('target-speed-value');
-  const playButton = document.getElementById('play-button');
-
-  gameTypeSelect.addEventListener('change', function() {
-    gameType = this.value;
-  });
-
-  gameModeSelect.addEventListener('change', function() {
-    customTimeDiv.style.display = this.value === 'custom' ? 'block' : 'none';
-  });
-
-  movementModeSelect.addEventListener('change', function() {
-    movementMode = this.value;
-  });
-
-  targetSpeedSlider.addEventListener('input', function() {
-    targetSpeed = parseFloat(this.value);
-    targetSpeedValue.textContent = targetSpeed.toFixed(4);
-  });
-
-  playButton.addEventListener('click', function() {
-    const selectedMode = gameModeSelect.value;
-    if (selectedMode === 'custom') {
-      const customTime = parseInt(document.getElementById('custom-time-input').value);
-      if (customTime > 0 && customTime <= 300) {
-        gameMode = customTime;
-      } else {
-        alert('Please enter a valid time between 1 and 300 seconds');
-        return;
-      }
-    } else {
-      gameMode = selectedMode;
-    }
-    startGame();
-  });
+    // Update play button event listener
+    document.getElementById('playButton').addEventListener('click', () => {
+        gameType = document.getElementById('gameType').value;
+        gameMode = document.getElementById('timeMode').value;
+        movementMode = document.getElementById('movementMode').value;
+        
+        // Remove launcher screen
+        launcherScreen.remove();
+        
+        // Initialize world and start game
+        initWorld();
+        startGame();
+    });
 }
 
 function showGameOver() {
@@ -416,7 +396,7 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Update the startGame function to handle PvP mode
+// Update the startGame function
 function startGame() {
     // First, (re)initialize the audio beep:
     initAudio();
@@ -666,7 +646,7 @@ function getRandomDirection() {
   return angles[Math.floor(Math.random() * angles.length)];
 }
 
-// Update the initWorld function to handle PvP mode
+// Update the initWorld function to fix the black screen issue
 function initWorld() {
     // Create scene
     scene = new THREE.Scene();
@@ -674,9 +654,20 @@ function initWorld() {
 
     // Create camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    // Position camera to face the target
-    camera.position.set(0, 2, 15);
-    camera.lookAt(0, TARGET_HEIGHT, 0); // Updated to look at new target height
+    
+    // Position camera based on game type
+    if (gameType === 'pvp') {
+        if (playerNumber === 1) {
+            camera.position.set(-5, 2, 0);
+            camera.lookAt(0, 2, 0);
+        } else {
+            camera.position.set(5, 2, 0);
+            camera.lookAt(0, 2, 0);
+        }
+    } else {
+        camera.position.set(0, 2, 15);
+        camera.lookAt(0, TARGET_HEIGHT, 0);
+    }
 
     // Create renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -684,9 +675,9 @@ function initWorld() {
     renderer.shadowMap.enabled = true;
     document.getElementById('world-container').appendChild(renderer.domElement);
 
-    // Add controls
+    // Add controls with updated sensitivity
     controls = new THREE.PointerLockControls(camera, document.body);
-    controls.mouseSensitivity = MOUSE_SENSITIVITY;
+    controls.mouseSensitivity = MOUSE_SENSITIVITY * mouseSensitivity;
     
     // Add crosshair
     const crosshair = document.createElement('div');
