@@ -212,7 +212,7 @@ function createLauncherScreen() {
     const launcherScreen = document.createElement('div');
     launcherScreen.className = 'launcher-screen';
     launcherScreen.innerHTML = `
-        <div class="version">v1.01</div>
+        <div class="version">v1.02</div>
         <h1>Aim Trainer</h1>
         <div class="controls">
             <div class="control-group">
@@ -694,7 +694,26 @@ function getRandomDirection() {
   return angles[Math.floor(Math.random() * angles.length)];
 }
 
-// Update the initWorld function to fix the black screen issue
+function createTarget() {
+    // Create target geometry (a simple sphere)
+    const targetGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+    const targetMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xff0000,
+        metalness: 0.5,
+        roughness: 0.5
+    });
+    
+    // Create the target mesh
+    target = new THREE.Mesh(targetGeometry, targetMaterial);
+    target.position.set(0, TARGET_HEIGHT, 0);
+    target.castShadow = true;
+    target.receiveShadow = true;
+    
+    // Add the target to the scene
+    scene.add(target);
+}
+
+// Update the initWorld function to ensure proper initialization
 function initWorld() {
     // Clear any existing scene
     if (scene) {
@@ -892,4 +911,20 @@ function checkPlayerHit() {
       socket.emit('playerShot', socket.id);
     }
   }
+}
+
+// Add mouse event handlers that were missing
+function onMouseDown(event) {
+    if (event.button === 0) { // Left click
+        isShooting = true;
+        if (gameType === 'pvp') {
+            checkPlayerHit();
+        }
+    }
+}
+
+function onMouseUp(event) {
+    if (event.button === 0) { // Left click
+        isShooting = false;
+    }
 }
