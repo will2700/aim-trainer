@@ -655,56 +655,25 @@ function initWorld() {
     // Create camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     
-    // Position camera based on game type
-    if (gameType === 'pvp') {
-        if (playerNumber === 1) {
-            camera.position.set(-5, 2, 0);
-            camera.lookAt(0, 2, 0);
-        } else {
-            camera.position.set(5, 2, 0);
-            camera.lookAt(0, 2, 0);
-        }
-    } else {
-        camera.position.set(0, 2, 15);
-        camera.lookAt(0, TARGET_HEIGHT, 0);
-    }
-
-    // Create renderer
+    // Create renderer first and append to DOM
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
-    document.getElementById('world-container').appendChild(renderer.domElement);
+    
+    // Make sure the container exists
+    let container = document.getElementById('world-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'world-container';
+        document.body.appendChild(container);
+    }
+    container.appendChild(renderer.domElement);
 
     // Add controls with updated sensitivity
     controls = new THREE.PointerLockControls(camera, document.body);
     controls.mouseSensitivity = MOUSE_SENSITIVITY * mouseSensitivity;
-    
-    // Add crosshair
-    const crosshair = document.createElement('div');
-    crosshair.className = 'crosshair';
-    document.body.appendChild(crosshair);
 
-    // Add score display
-    const scoreDisplay = document.createElement('div');
-    scoreDisplay.className = 'score-display';
-    scoreDisplay.textContent = 'Score: 0 | Accuracy: 0%';
-    document.body.appendChild(scoreDisplay);
-
-    // Add time display if not free mode
-    if (gameMode !== 'free') {
-        const timeDisplay = document.createElement('div');
-        timeDisplay.className = 'time-display';
-        timeDisplay.textContent = `Time: ${gameMode}s`;
-        document.body.appendChild(timeDisplay);
-    }
-
-    // Add game event listeners
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('mouseup', onMouseUp);
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('keyup', onKeyUp);
-
-    // Add lighting
+    // Add lighting first
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
@@ -797,10 +766,35 @@ function initWorld() {
         }
     } else {
         createTarget();
+        camera.position.set(0, 2, 15);
+        camera.lookAt(0, TARGET_HEIGHT, 0);
     }
 
     // Create character
     createCharacter();
+
+    // Add UI elements
+    const crosshair = document.createElement('div');
+    crosshair.className = 'crosshair';
+    document.body.appendChild(crosshair);
+
+    const scoreDisplay = document.createElement('div');
+    scoreDisplay.className = 'score-display';
+    scoreDisplay.textContent = 'Score: 0 | Accuracy: 0%';
+    document.body.appendChild(scoreDisplay);
+
+    if (gameMode !== 'free') {
+        const timeDisplay = document.createElement('div');
+        timeDisplay.className = 'time-display';
+        timeDisplay.textContent = `Time: ${gameMode}s`;
+        document.body.appendChild(timeDisplay);
+    }
+
+    // Add game event listeners
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
 
     // Reset game state
     score = 0;
@@ -815,13 +809,7 @@ function initWorld() {
     player1Dead = false;
     player2Dead = false;
 
-    document.querySelector('.score-display').textContent = `Score: ${score} | Accuracy: ${accuracy.toFixed(1)}%`;
-    if (gameMode !== 'free') {
-        document.querySelector('.time-display').textContent = `Time: ${gameMode}s`;
-    }
-
-    // Lock controls and start animation
-    controls.lock();
+    // Start animation loop
     animate(0);
 
     // Add pointer lock event listeners
