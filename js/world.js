@@ -75,79 +75,102 @@ let characterBody = null;
 let characterHead = null;
 
 // Add Socket.IO connection
-const socket = io(window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://your-hosted-server-url.herokuapp.com');
+let socket = null;
 let playerNumber = null;
 let otherPlayer = null;
 
-// Socket.IO event handlers
-socket.on('playerNumber', (number) => {
-    playerNumber = number;
-    console.log(`You are player ${number}`);
-});
+function initializeSocket() {
+    const serverUrl = window.location.hostname === 'localhost' 
+        ? 'http://localhost:3000' 
+        : window.location.origin;
+    
+    try {
+        socket = io(serverUrl);
+        
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+        
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            // Fallback to single player mode if connection fails
+            gameType = 'single';
+        });
+        
+        // Set up existing socket event handlers
+        socket.on('playerNumber', (number) => {
+            playerNumber = number;
+            console.log(`You are player ${number}`);
+        });
+        
+        socket.on('gameState', (players) => {
+            players.forEach(player => {
+                if (player.number !== playerNumber) {
+                    otherPlayer = createPlayer(player.number);
+                    otherPlayer.position.set(player.position.x, player.position.y, player.position.z);
+                }
+            });
+        });
 
-socket.on('gameState', (players) => {
-    players.forEach(player => {
-        if (player.number !== playerNumber) {
-            otherPlayer = createPlayer(player.number);
-            otherPlayer.position.set(player.position.x, player.position.y, player.position.z);
-        }
-    });
-});
+        socket.on('playerMoved', (data) => {
+            if (otherPlayer && data.id !== socket.id) {
+                otherPlayer.position.set(data.position.x, data.position.y, data.position.z);
+            }
+        });
 
-socket.on('playerMoved', (data) => {
-    if (otherPlayer && data.id !== socket.id) {
-        otherPlayer.position.set(data.position.x, data.position.y, data.position.z);
+        socket.on('playerHealthUpdate', (data) => {
+            if (data.id === socket.id) {
+                if (playerNumber === 1) {
+                    player1Health = data.health;
+                } else {
+                    player2Health = data.health;
+                }
+                updateHealthDisplay();
+            }
+        });
+
+        socket.on('playerDied', (playerId) => {
+            if (playerId === socket.id) {
+                if (playerNumber === 1) {
+                    player1Dead = true;
+                    player1.visible = false;
+                } else {
+                    player2Dead = true;
+                    player2.visible = false;
+                }
+            } else if (otherPlayer) {
+                otherPlayer.visible = false;
+            }
+        });
+
+        socket.on('playerRespawned', (data) => {
+            if (data.id === socket.id) {
+                if (playerNumber === 1) {
+                    player1Dead = false;
+                    player1.visible = true;
+                    player1.position.set(data.position.x, data.position.y, data.position.z);
+                } else {
+                    player2Dead = false;
+                    player2.visible = true;
+                    player2.position.set(data.position.x, data.position.y, data.position.z);
+                }
+            } else if (otherPlayer) {
+                otherPlayer.visible = true;
+                otherPlayer.position.set(data.position.x, data.position.y, data.position.z);
+            }
+        });
+
+        socket.on('playerDisconnected', (playerId) => {
+            if (otherPlayer) {
+                scene.remove(otherPlayer);
+                otherPlayer = null;
+            }
+        });
+    } catch (error) {
+        console.error('Failed to initialize socket:', error);
+        gameType = 'single';
     }
-});
-
-socket.on('playerHealthUpdate', (data) => {
-    if (data.id === socket.id) {
-        if (playerNumber === 1) {
-            player1Health = data.health;
-        } else {
-            player2Health = data.health;
-        }
-        updateHealthDisplay();
-    }
-});
-
-socket.on('playerDied', (playerId) => {
-    if (playerId === socket.id) {
-        if (playerNumber === 1) {
-            player1Dead = true;
-            player1.visible = false;
-        } else {
-            player2Dead = true;
-            player2.visible = false;
-        }
-    } else if (otherPlayer) {
-        otherPlayer.visible = false;
-    }
-});
-
-socket.on('playerRespawned', (data) => {
-    if (data.id === socket.id) {
-        if (playerNumber === 1) {
-            player1Dead = false;
-            player1.visible = true;
-            player1.position.set(data.position.x, data.position.y, data.position.z);
-        } else {
-            player2Dead = false;
-            player2.visible = true;
-            player2.position.set(data.position.x, data.position.y, data.position.z);
-        }
-    } else if (otherPlayer) {
-        otherPlayer.visible = true;
-        otherPlayer.position.set(data.position.x, data.position.y, data.position.z);
-    }
-});
-
-socket.on('playerDisconnected', (playerId) => {
-    if (otherPlayer) {
-        scene.remove(otherPlayer);
-        otherPlayer = null;
-    }
-});
+}
 
 // Update sensitivity controls
 let mouseSensitivity = 1.0; // Default sensitivity
@@ -156,8 +179,10 @@ const MAX_SENSITIVITY = 4.0;  // +4x
 
 // Start the game when the page loads
 window.addEventListener('load', function() {
-  // Create the initial launcher screen
-  createLauncherScreen();
+    // Initialize socket first
+    initializeSocket();
+    // Create the initial launcher screen
+    createLauncherScreen();
 });
 
 function createCheckerboardTexture(size = 1, divisions = 8) {
@@ -398,16 +423,35 @@ function onWindowResize() {
 
 // Update the startGame function
 function startGame() {
-    // First, (re)initialize the audio beep:
-    initAudio();
+    // Clean up any existing game state
+    if (gameActive) {
+        // Remove existing event listeners
+        document.removeEventListener('mousedown', onMouseDown);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('keyup', onKeyUp);
+        document.removeEventListener('pointerlockchange', onPointerLockChange);
+        document.removeEventListener('pointerlockerror', onPointerLockError);
+        
+        // Remove existing UI elements
+        const existingUI = document.querySelectorAll('.crosshair, .score-display, .time-display, .health-display');
+        existingUI.forEach(element => element.remove());
+    }
 
     // Reset game state
+    gameActive = true;
+    isPointerLocked = false;
+    pointerLockMessage = null;
+
+    // Initialize audio
+    initAudio();
+
+    // Reset game variables
     score = 0;
     shotsFired = 0;
     shotsHit = 0;
     accuracy = 0;
     gameTime = gameMode === 'free' ? Infinity : gameMode;
-    gameActive = true;
     
     // Remove any existing launcher or game over screens
     const existingScreens = document.querySelectorAll('.launcher-screen');
@@ -416,8 +460,12 @@ function startGame() {
     // Initialize the game world
     initWorld();
 
-    // Request pointer lock
-    document.body.requestPointerLock();
+    // Request pointer lock after a short delay to ensure everything is set up
+    setTimeout(() => {
+        if (gameActive) {
+            document.body.requestPointerLock();
+        }
+    }, 100);
 }
 
 // This function creates a short beep in an AudioBuffer:
@@ -648,6 +696,17 @@ function getRandomDirection() {
 
 // Update the initWorld function to fix the black screen issue
 function initWorld() {
+    // Clear any existing scene
+    if (scene) {
+        scene.traverse((object) => {
+            if (object instanceof THREE.Mesh) {
+                object.geometry.dispose();
+                object.material.dispose();
+            }
+        });
+        scene.clear();
+    }
+
     // Create scene
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
@@ -655,17 +714,19 @@ function initWorld() {
     // Create camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     
-    // Create renderer first and append to DOM
+    // Create renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     
-    // Make sure the container exists
+    // Make sure the container exists and is empty
     let container = document.getElementById('world-container');
     if (!container) {
         container = document.createElement('div');
         container.id = 'world-container';
         document.body.appendChild(container);
+    } else {
+        container.innerHTML = ''; // Clear any existing content
     }
     container.appendChild(renderer.domElement);
 
@@ -673,7 +734,7 @@ function initWorld() {
     controls = new THREE.PointerLockControls(camera, document.body);
     controls.mouseSensitivity = MOUSE_SENSITIVITY * mouseSensitivity;
 
-    // Add lighting first
+    // Add lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
@@ -682,7 +743,7 @@ function initWorld() {
     directionalLight.castShadow = true;
     scene.add(directionalLight);
 
-    // Create ground with checkerboard texture
+    // Create ground
     const groundGeometry = new THREE.PlaneGeometry(100, 100);
     const groundMaterial = new THREE.MeshStandardMaterial({ 
         map: createCheckerboardTexture(4, 8),
@@ -694,7 +755,7 @@ function initWorld() {
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Create walls with checkerboard texture
+    // Create walls
     const wallMaterial = new THREE.MeshStandardMaterial({ 
         map: createCheckerboardTexture(4, 8),
         roughness: 0.8,
@@ -743,8 +804,8 @@ function initWorld() {
     rightWall.receiveShadow = true;
     scene.add(rightWall);
 
-    // Create players based on game type
-    if (gameType === 'pvp') {
+    // Create players or target based on game type
+    if (gameType === 'pvp' && socket) {
         // Remove existing players if any
         if (player1) scene.remove(player1);
         if (player2) scene.remove(player2);
@@ -765,6 +826,7 @@ function initWorld() {
             camera.lookAt(0, 2, 0);
         }
     } else {
+        // Single player mode
         createTarget();
         camera.position.set(0, 2, 15);
         camera.lookAt(0, TARGET_HEIGHT, 0);
@@ -790,12 +852,6 @@ function initWorld() {
         document.body.appendChild(timeDisplay);
     }
 
-    // Add game event listeners
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('mouseup', onMouseUp);
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('keyup', onKeyUp);
-
     // Reset game state
     score = 0;
     shotsFired = 0;
@@ -809,12 +865,18 @@ function initWorld() {
     player1Dead = false;
     player2Dead = false;
 
-    // Start animation loop
-    animate(0);
+    // Add game event listeners
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
 
     // Add pointer lock event listeners
     document.addEventListener('pointerlockchange', onPointerLockChange);
     document.addEventListener('pointerlockerror', onPointerLockError);
+
+    // Start animation loop
+    animate(0);
 }
 
 function checkPlayerHit() {
