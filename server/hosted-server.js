@@ -10,83 +10,100 @@ const io = require('socket.io')(http, {
 
 // Serve static files from the root directory
 app.use(express.static(__dirname + '/..'));
+console.log('Serving static files from:', __dirname + '/..');
 
-// Store connected players
-const players = new Map();
+// Game state
+let players = new Map();
+let gameState = {
+    player1Health: 100,
+    player2Health: 100,
+    gameStarted: false,
+    gameMode: 'pvp'
+};
 
 io.on('connection', (socket) => {
-    console.log('A player connected from:', socket.handshake.address);
+    console.log('A user connected');
 
-    // Assign player number (1 or 2)
-    const playerNumber = players.size + 1;
-    players.set(socket.id, {
-        number: playerNumber,
-        position: { x: playerNumber === 1 ? -5 : 5, y: 0, z: 0 },
-        health: 100,
-        isDead: false
+    // Handle player join
+    socket.on('joinGame', () => {
+        if (players.size < 2) {
+            const playerNumber = players.size + 1;
+            players.set(socket.id, {
+                number: playerNumber,
+                position: { x: 0, y: 0, z: 0 },
+                health: 100
+            });
+            
+            // Send player number to client
+            socket.emit('playerNumber', playerNumber);
+            
+            // Broadcast updated player count
+            io.emit('playerCount', players.size);
+            
+            // If we have 2 players, start the game
+            if (players.size === 2) {
+                io.emit('gameStart', gameState);
+            }
+        } else {
+            socket.emit('gameFull');
+        }
     });
-
-    // Send player number to the client
-    socket.emit('playerNumber', playerNumber);
-
-    // Send current game state to new player
-    socket.emit('gameState', Array.from(players.values()));
 
     // Handle player movement
     socket.on('playerMove', (position) => {
         const player = players.get(socket.id);
         if (player) {
             player.position = position;
-            io.emit('playerMoved', {
-                id: socket.id,
+            // Broadcast position to all other players
+            socket.broadcast.emit('playerMoved', {
+                playerNumber: player.number,
                 position: position
             });
         }
     });
 
-    // Handle player shooting
-    socket.on('playerShot', (targetId) => {
-        const target = players.get(targetId);
-        if (target && !target.isDead) {
-            target.health -= 10;
-            if (target.health <= 0) {
-                target.health = 0;
-                target.isDead = true;
-                io.emit('playerDied', targetId);
-                
-                // Respawn after 3 seconds
-                setTimeout(() => {
-                    target.health = 100;
-                    target.isDead = false;
-                    target.position = { 
-                        x: target.number === 1 ? -5 : 5, 
-                        y: 0, 
-                        z: 0 
-                    };
-                    io.emit('playerRespawned', {
-                        id: targetId,
-                        position: target.position
-                    });
-                }, 3000);
+    // Handle player hit
+    socket.on('playerHit', (data) => {
+        const { targetPlayerNumber } = data;
+        const targetPlayer = Array.from(players.values()).find(p => p.number === targetPlayerNumber);
+        
+        if (targetPlayer) {
+            targetPlayer.health -= 10; // Damage amount
+            if (targetPlayer.health <= 0) {
+                targetPlayer.health = 0;
             }
-            io.emit('playerHealthUpdate', {
-                id: targetId,
-                health: target.health
-            });
+            
+            // Update game state
+            if (targetPlayerNumber === 1) {
+                gameState.player1Health = targetPlayer.health;
+            } else {
+                gameState.player2Health = targetPlayer.health;
+            }
+            
+            // Broadcast health update
+            io.emit('healthUpdate', gameState);
+            
+            // Check for game over
+            if (gameState.player1Health <= 0 || gameState.player2Health <= 0) {
+                io.emit('gameOver', {
+                    winner: gameState.player1Health <= 0 ? 2 : 1
+                });
+            }
         }
     });
 
     // Handle disconnection
     socket.on('disconnect', () => {
-        console.log('A player disconnected:', socket.handshake.address);
-        players.delete(socket.id);
-        io.emit('playerDisconnected', socket.id);
+        const player = players.get(socket.id);
+        if (player) {
+            players.delete(socket.id);
+            io.emit('playerLeft', player.number);
+            io.emit('playerCount', players.size);
+        }
     });
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, '0.0.0.0', () => {
+http.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log(`Static files being served from: ${__dirname + '/..'}`);
 }); 

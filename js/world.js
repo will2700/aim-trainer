@@ -297,373 +297,114 @@ function showGameOver() {
   });
 }
 
-function initWorld() {
-  // Create scene
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87CEEB);
+// Add time tracking for delta time
+let lastTime = 0;
+let deltaTime = 0;
 
-  // Create camera
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  // Position camera to face the target
-  camera.position.set(0, 2, 15);
-  camera.lookAt(0, TARGET_HEIGHT, 0); // Updated to look at new target height
+function animate(currentTime) {
+    requestAnimationFrame(animate);
+    
+    // Calculate delta time
+    deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+    lastTime = currentTime;
 
-  // Create renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  document.getElementById('world-container').appendChild(renderer.domElement);
+    if (controls.isLocked) {
+        // Update character position to match camera
+        if (character) {
+            character.position.x = camera.position.x;
+            character.position.z = camera.position.z;
+            character.position.y = 0; // Keep character on ground
+            
+            // Make character face the direction the camera is looking
+            character.rotation.y = camera.rotation.y;
 
-  // Add controls
-  controls = new THREE.PointerLockControls(camera, document.body);
-  controls.mouseSensitivity = MOUSE_SENSITIVITY;
-  
-  // Add crosshair
-  const crosshair = document.createElement('div');
-  crosshair.className = 'crosshair';
-  document.body.appendChild(crosshair);
-
-  // Add score display
-  const scoreDisplay = document.createElement('div');
-  scoreDisplay.className = 'score-display';
-  scoreDisplay.textContent = 'Score: 0 | Accuracy: 0%';
-  document.body.appendChild(scoreDisplay);
-
-  // Add time display if not free mode
-  if (gameMode !== 'free') {
-    const timeDisplay = document.createElement('div');
-    timeDisplay.className = 'time-display';
-    timeDisplay.textContent = `Time: ${gameMode}s`;
-    document.body.appendChild(timeDisplay);
-  }
-
-  // Add game event listeners
-  document.addEventListener('mousedown', onMouseDown);
-  document.addEventListener('mouseup', onMouseUp);
-  document.addEventListener('keydown', onKeyDown);
-  document.addEventListener('keyup', onKeyUp);
-
-  // Add lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-  scene.add(ambientLight);
-
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(5, 5, 5);
-  directionalLight.castShadow = true;
-  scene.add(directionalLight);
-
-  // Create ground with checkerboard texture
-  const groundGeometry = new THREE.PlaneGeometry(100, 100);
-  const groundMaterial = new THREE.MeshStandardMaterial({ 
-    map: createCheckerboardTexture(4, 8),
-    roughness: 0.8,
-    metalness: 0.2
-  });
-  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  // Create walls with checkerboard texture
-  const wallMaterial = new THREE.MeshStandardMaterial({ 
-    map: createCheckerboardTexture(4, 8),
-    roughness: 0.8,
-    metalness: 0.2
-  });
-
-  // Back wall
-  const backWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(100, 20),
-      wallMaterial
-  );
-  backWall.position.z = -50;
-  backWall.position.y = 10;
-  backWall.receiveShadow = true;
-  scene.add(backWall);
-
-  // Front wall
-  const frontWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(100, 20),
-      wallMaterial
-  );
-  frontWall.position.z = 50;
-  frontWall.position.y = 10;
-  frontWall.receiveShadow = true;
-  scene.add(frontWall);
-
-  // Left wall
-  const leftWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(100, 20),
-      wallMaterial
-  );
-  leftWall.position.x = -50;
-  leftWall.position.y = 10;
-  leftWall.rotation.y = Math.PI / 2;
-  leftWall.receiveShadow = true;
-  scene.add(leftWall);
-
-  // Right wall
-  const rightWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(100, 20),
-      wallMaterial
-  );
-  rightWall.position.x = 50;
-  rightWall.position.y = 10;
-  rightWall.rotation.y = Math.PI / 2;
-  rightWall.receiveShadow = true;
-  scene.add(rightWall);
-
-  // Create players based on game type
-  if (gameType === 'pvp') {
-    player1 = createPlayer(true);
-    player2 = createPlayer(false);
-    createHealthDisplay();
-    updateHealthDisplay();
-  } else {
-    createTarget();
-  }
-
-  // Create character
-  createCharacter();
-
-  // Reset game state
-  score = 0;
-  shotsFired = 0;
-  shotsHit = 0;
-  accuracy = 0;
-  gameTime = gameMode === 'free' ? Infinity : gameMode;
-  gameStarted = false;
-  targetStartedMoving = false;
-  player1Health = MAX_HEALTH;
-  player2Health = MAX_HEALTH;
-  player1Dead = false;
-  player2Dead = false;
-
-  document.querySelector('.score-display').textContent = `Score: ${score} | Accuracy: ${accuracy.toFixed(1)}%`;
-  if (gameMode !== 'free') {
-    document.querySelector('.time-display').textContent = `Time: ${gameMode}s`;
-  }
-
-  // Lock controls and start animation
-  controls.lock();
-  animate();
-
-  // Add pointer lock event listeners
-  document.addEventListener('pointerlockchange', onPointerLockChange);
-  document.addEventListener('pointerlockerror', onPointerLockError);
-}
-
-function onMouseDown(event) {
-  if (event.button === 0) { // Left click
-    isShooting = true;
-    shotsFired++;
-    playShotSound();
-    if (gameType === 'pvp') {
-      checkPlayerHit();
-    } else {
-      checkTargetHit();
-    }
-  }
-}
-
-function onMouseUp(event) {
-  if (event.button === 0) { // Left click
-    isShooting = false;
-  }
-}
-
-function createTarget() {
-  // Create a sphere for the target
-  const geometry = new THREE.SphereGeometry(0.5, 32, 32);
-  const material = new THREE.MeshStandardMaterial({ 
-    color: 0xff0000,
-    metalness: 0.5,
-    roughness: 0.5
-  });
-  target = new THREE.Mesh(geometry, material);
-  target.position.set(0, TARGET_HEIGHT, 0);
-  scene.add(target);
-
-  // Create boundary square (vertical plane)
-  const boundaryGeometry = new THREE.BoxGeometry(TARGET_BOUNDARY * 2, TARGET_BOUNDARY * 2, 0.1);
-  const boundaryMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x00ff00,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.5
-  });
-  const boundary = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
-  boundary.position.y = TARGET_HEIGHT;
-  boundary.position.z = -5; // Move boundary slightly in front of target
-  scene.add(boundary);
-}
-
-function checkTargetHit() {
-  raycaster.setFromCamera(new THREE.Vector2(), camera);
-  const intersects = raycaster.intersectObject(target);
-  if (intersects.length > 0) {
-    shotsHit++;
-    score += 100;
-  }
-  // Update accuracy regardless of hit or miss
-  accuracy = shotsFired > 0 ? (shotsHit / shotsFired) * 100 : 0;
-  document.querySelector('.score-display').textContent = 
-    `Score: ${score} | Accuracy: ${accuracy.toFixed(1)}%`;
-
-  // Start target movement and game timer on first shot
-  if (!targetStartedMoving) {
-    targetStartedMoving = true;
-  }
-  if (!gameStarted && gameMode !== 'free') {
-    gameStarted = true;
-  }
-}
-
-// Movement controls
-function onKeyDown(event) {
-  switch (event.code) {
-    case 'KeyW':
-      moveForward = true;
-      break;
-    case 'KeyS':
-      moveBackward = true;
-      break;
-    case 'KeyA':
-      moveLeft = true;
-      break;
-    case 'KeyD':
-      moveRight = true;
-      break;
-    case 'Space':
-      if (canJump) {
-        jumpVelocity = JUMP_FORCE;
-        canJump = false;
-      }
-      break;
-  }
-}
-
-function onKeyUp(event) {
-  switch (event.code) {
-    case 'KeyW':
-      moveForward = false;
-      break;
-    case 'KeyS':
-      moveBackward = false;
-      break;
-    case 'KeyA':
-      moveLeft = false;
-      break;
-    case 'KeyD':
-      moveRight = false;
-      break;
-  }
-}
-
-function getRandomDirection() {
-  // Return a random angle in radians (0, 45, 90, 135, 180, 225, 270, 315 degrees)
-  const angles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, 5*Math.PI/4, 3*Math.PI/2, 7*Math.PI/4];
-  return angles[Math.floor(Math.random() * angles.length)];
-}
-
-function animate() {
-  requestAnimationFrame(animate);
-
-  if (controls.isLocked) {
-    // Update character position to match camera
-    if (character) {
-      character.position.x = camera.position.x;
-      character.position.z = camera.position.z;
-      character.position.y = 0; // Keep character on ground
-      
-      // Make character face the direction the camera is looking
-      character.rotation.y = camera.rotation.y;
-
-      // Send position update to server
-      if (gameType === 'pvp') {
-        socket.emit('playerMove', {
-          x: character.position.x,
-          y: character.position.y,
-          z: character.position.z
-        });
-      }
-    }
-
-    // Apply movement only if in moving mode
-    if (movementMode === 'moving') {
-      if (moveForward) controls.moveForward(MOVEMENT_SPEED);
-      if (moveBackward) controls.moveForward(-MOVEMENT_SPEED);
-      if (moveLeft) controls.moveRight(-MOVEMENT_SPEED);
-      if (moveRight) controls.moveRight(MOVEMENT_SPEED);
-
-      // Handle jumping
-      if (!canJump) {
-        jumpVelocity -= GRAVITY * 0.016;
-        camera.position.y += jumpVelocity;
-
-        // Check if landed
-        if (camera.position.y <= 2) {
-          camera.position.y = 2;
-          jumpVelocity = 0;
-          canJump = true;
+            // Send position update to server
+            if (gameType === 'pvp') {
+                socket.emit('playerMove', {
+                    x: character.position.x,
+                    y: character.position.y,
+                    z: character.position.z
+                });
+            }
         }
-      }
-    }
 
-    // Handle shooting in spray mode with cooldown
-    if (isShooting) {
-      const currentTime = Date.now();
-      if (currentTime - lastSprayTime >= SPRAY_COOLDOWN) {
-        shotsFired++;
-        playShotSound();
-        if (target) {
-          checkTargetHit();
+        // Apply movement only if in moving mode
+        if (movementMode === 'moving') {
+            const moveSpeed = MOVEMENT_SPEED * deltaTime * 60; // Normalize to 60fps
+            if (moveForward) controls.moveForward(moveSpeed);
+            if (moveBackward) controls.moveForward(-moveSpeed);
+            if (moveLeft) controls.moveRight(-moveSpeed);
+            if (moveRight) controls.moveRight(moveSpeed);
+
+            // Handle jumping with delta time
+            if (!canJump) {
+                jumpVelocity -= GRAVITY * deltaTime * 60; // Normalize to 60fps
+                camera.position.y += jumpVelocity;
+
+                // Check if landed
+                if (camera.position.y <= 2) {
+                    camera.position.y = 2;
+                    jumpVelocity = 0;
+                    canJump = true;
+                }
+            }
         }
-        lastSprayTime = currentTime;
-      }
+
+        // Handle shooting in spray mode with cooldown
+        if (isShooting) {
+            const currentTime = Date.now();
+            if (currentTime - lastSprayTime >= SPRAY_COOLDOWN) {
+                shotsFired++;
+                playShotSound();
+                if (target) {
+                    checkTargetHit();
+                }
+                lastSprayTime = currentTime;
+            }
+        }
+
+        // Update game time if not in free mode and game has started
+        if (gameMode !== 'free' && gameTime > 0 && gameStarted) {
+            gameTime -= deltaTime; // Use delta time for consistent timing
+            document.querySelector('.time-display').textContent = 
+                `Time: ${Math.ceil(gameTime)}s`;
+            
+            if (gameTime <= 0) {
+                showGameOver();
+            }
+        }
     }
 
-    // Update game time if not in free mode and game has started
-    if (gameMode !== 'free' && gameTime > 0 && gameStarted) {
-      gameTime -= 0.016; // ~60fps
-      document.querySelector('.time-display').textContent = 
-        `Time: ${Math.ceil(gameTime)}s`;
-      
-      if (gameTime <= 0) {
-        showGameOver();
-      }
+    // Move target only if it has started moving
+    if (target && targetStartedMoving) {
+        const currentTime = Date.now() / 1000; // Convert to seconds
+
+        // Check if it's time to change direction
+        if (currentTime >= nextDirectionChange) {
+            currentDirection = getRandomDirection();
+            nextDirectionChange = currentTime + (Math.random() * (MAX_DIRECTION_TIME - MIN_DIRECTION_TIME) + MIN_DIRECTION_TIME);
+        }
+
+        // Calculate new position based on current direction
+        // Use X for horizontal movement and Y for vertical movement
+        const moveSpeed = targetSpeed * deltaTime * 60; // Normalize to 60fps
+        const newX = target.position.x + Math.cos(currentDirection) * moveSpeed;
+        const newY = target.position.y + Math.sin(currentDirection) * moveSpeed;
+
+        // Keep target within boundaries
+        if (Math.abs(newX) <= TARGET_BOUNDARY && 
+            Math.abs(newY - TARGET_HEIGHT) <= TARGET_BOUNDARY) {
+            target.position.x = newX;
+            target.position.y = newY;
+            target.position.z = 0; // Keep target at constant depth
+        } else {
+            // If target would go out of bounds, change direction
+            currentDirection = getRandomDirection();
+            nextDirectionChange = currentTime + (Math.random() * (MAX_DIRECTION_TIME - MIN_DIRECTION_TIME) + MIN_DIRECTION_TIME);
+        }
     }
-  }
 
-  // Move target only if it has started moving
-  if (target && targetStartedMoving) {
-    const currentTime = Date.now() / 1000; // Convert to seconds
-
-    // Check if it's time to change direction
-    if (currentTime >= nextDirectionChange) {
-      currentDirection = getRandomDirection();
-      nextDirectionChange = currentTime + (Math.random() * (MAX_DIRECTION_TIME - MIN_DIRECTION_TIME) + MIN_DIRECTION_TIME);
-    }
-
-    // Calculate new position based on current direction
-    // Use X for horizontal movement and Y for vertical movement
-    const newX = target.position.x + Math.cos(currentDirection) * targetSpeed;
-    const newY = target.position.y + Math.sin(currentDirection) * targetSpeed;
-
-    // Keep target within boundaries
-    if (Math.abs(newX) <= TARGET_BOUNDARY && 
-        Math.abs(newY - TARGET_HEIGHT) <= TARGET_BOUNDARY) {
-      target.position.x = newX;
-      target.position.y = newY;
-      target.position.z = 0; // Keep target at constant depth
-    } else {
-      // If target would go out of bounds, change direction
-      currentDirection = getRandomDirection();
-      nextDirectionChange = currentTime + (Math.random() * (MAX_DIRECTION_TIME - MIN_DIRECTION_TIME) + MIN_DIRECTION_TIME);
-    }
-  }
-
-  renderer.render(scene, camera);
+    renderer.render(scene, camera);
 }
 
 // Handle window resize
@@ -675,28 +416,28 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Initialize world when game starts
+// Update the startGame function to handle PvP mode
 function startGame() {
-  // First, (re)initialize the audio beep:
-  initAudio();
+    // First, (re)initialize the audio beep:
+    initAudio();
 
-  // Reset game state
-  score = 0;
-  shotsFired = 0;
-  shotsHit = 0;
-  accuracy = 0;
-  gameTime = gameMode === 'free' ? Infinity : gameMode;
-  gameActive = true;
-  
-  // Remove any existing launcher or game over screens
-  const existingScreens = document.querySelectorAll('.launcher-screen');
-  existingScreens.forEach(screen => screen.remove());
-  
-  // Initialize the game world
-  initWorld();
+    // Reset game state
+    score = 0;
+    shotsFired = 0;
+    shotsHit = 0;
+    accuracy = 0;
+    gameTime = gameMode === 'free' ? Infinity : gameMode;
+    gameActive = true;
+    
+    // Remove any existing launcher or game over screens
+    const existingScreens = document.querySelectorAll('.launcher-screen');
+    existingScreens.forEach(screen => screen.remove());
+    
+    // Initialize the game world
+    initWorld();
 
-  // Request pointer lock
-  document.body.requestPointerLock();
+    // Request pointer lock
+    document.body.requestPointerLock();
 }
 
 // This function creates a short beep in an AudioBuffer:
@@ -855,6 +596,246 @@ function createPlayer(isPlayer1) {
 
   scene.add(player);
   return player;
+}
+
+function checkTargetHit() {
+  raycaster.setFromCamera(new THREE.Vector2(), camera);
+  const intersects = raycaster.intersectObject(target);
+  if (intersects.length > 0) {
+    shotsHit++;
+    score += 100;
+  }
+  // Update accuracy regardless of hit or miss
+  accuracy = shotsFired > 0 ? (shotsHit / shotsFired) * 100 : 0;
+  document.querySelector('.score-display').textContent = 
+    `Score: ${score} | Accuracy: ${accuracy.toFixed(1)}%`;
+
+  // Start target movement and game timer on first shot
+  if (!targetStartedMoving) {
+    targetStartedMoving = true;
+  }
+  if (!gameStarted && gameMode !== 'free') {
+    gameStarted = true;
+  }
+}
+
+// Movement controls
+function onKeyDown(event) {
+  switch (event.code) {
+    case 'KeyW':
+      moveForward = true;
+      break;
+    case 'KeyS':
+      moveBackward = true;
+      break;
+    case 'KeyA':
+      moveLeft = true;
+      break;
+    case 'KeyD':
+      moveRight = true;
+      break;
+    case 'Space':
+      if (canJump) {
+        jumpVelocity = JUMP_FORCE;
+        canJump = false;
+      }
+      break;
+  }
+}
+
+function onKeyUp(event) {
+  switch (event.code) {
+    case 'KeyW':
+      moveForward = false;
+      break;
+    case 'KeyS':
+      moveBackward = false;
+      break;
+    case 'KeyA':
+      moveLeft = false;
+      break;
+    case 'KeyD':
+      moveRight = false;
+      break;
+  }
+}
+
+function getRandomDirection() {
+  // Return a random angle in radians (0, 45, 90, 135, 180, 225, 270, 315 degrees)
+  const angles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, 5*Math.PI/4, 3*Math.PI/2, 7*Math.PI/4];
+  return angles[Math.floor(Math.random() * angles.length)];
+}
+
+// Update the initWorld function to handle PvP mode
+function initWorld() {
+    // Create scene
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+
+    // Create camera
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // Position camera to face the target
+    camera.position.set(0, 2, 15);
+    camera.lookAt(0, TARGET_HEIGHT, 0); // Updated to look at new target height
+
+    // Create renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.getElementById('world-container').appendChild(renderer.domElement);
+
+    // Add controls
+    controls = new THREE.PointerLockControls(camera, document.body);
+    controls.mouseSensitivity = MOUSE_SENSITIVITY;
+    
+    // Add crosshair
+    const crosshair = document.createElement('div');
+    crosshair.className = 'crosshair';
+    document.body.appendChild(crosshair);
+
+    // Add score display
+    const scoreDisplay = document.createElement('div');
+    scoreDisplay.className = 'score-display';
+    scoreDisplay.textContent = 'Score: 0 | Accuracy: 0%';
+    document.body.appendChild(scoreDisplay);
+
+    // Add time display if not free mode
+    if (gameMode !== 'free') {
+        const timeDisplay = document.createElement('div');
+        timeDisplay.className = 'time-display';
+        timeDisplay.textContent = `Time: ${gameMode}s`;
+        document.body.appendChild(timeDisplay);
+    }
+
+    // Add game event listeners
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+
+    // Add lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 5, 5);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+
+    // Create ground with checkerboard texture
+    const groundGeometry = new THREE.PlaneGeometry(100, 100);
+    const groundMaterial = new THREE.MeshStandardMaterial({ 
+        map: createCheckerboardTexture(4, 8),
+        roughness: 0.8,
+        metalness: 0.2
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Create walls with checkerboard texture
+    const wallMaterial = new THREE.MeshStandardMaterial({ 
+        map: createCheckerboardTexture(4, 8),
+        roughness: 0.8,
+        metalness: 0.2
+    });
+
+    // Back wall
+    const backWall = new THREE.Mesh(
+        new THREE.PlaneGeometry(100, 20),
+        wallMaterial
+    );
+    backWall.position.z = -50;
+    backWall.position.y = 10;
+    backWall.receiveShadow = true;
+    scene.add(backWall);
+
+    // Front wall
+    const frontWall = new THREE.Mesh(
+        new THREE.PlaneGeometry(100, 20),
+        wallMaterial
+    );
+    frontWall.position.z = 50;
+    frontWall.position.y = 10;
+    frontWall.receiveShadow = true;
+    scene.add(frontWall);
+
+    // Left wall
+    const leftWall = new THREE.Mesh(
+        new THREE.PlaneGeometry(100, 20),
+        wallMaterial
+    );
+    leftWall.position.x = -50;
+    leftWall.position.y = 10;
+    leftWall.rotation.y = Math.PI / 2;
+    leftWall.receiveShadow = true;
+    scene.add(leftWall);
+
+    // Right wall
+    const rightWall = new THREE.Mesh(
+        new THREE.PlaneGeometry(100, 20),
+        wallMaterial
+    );
+    rightWall.position.x = 50;
+    rightWall.position.y = 10;
+    rightWall.rotation.y = Math.PI / 2;
+    rightWall.receiveShadow = true;
+    scene.add(rightWall);
+
+    // Create players based on game type
+    if (gameType === 'pvp') {
+        // Remove existing players if any
+        if (player1) scene.remove(player1);
+        if (player2) scene.remove(player2);
+        if (otherPlayer) scene.remove(otherPlayer);
+
+        // Create new players
+        player1 = createPlayer(true);
+        player2 = createPlayer(false);
+        createHealthDisplay();
+        updateHealthDisplay();
+
+        // Position camera based on player number
+        if (playerNumber === 1) {
+            camera.position.set(-5, 2, 0);
+            camera.lookAt(0, 2, 0);
+        } else {
+            camera.position.set(5, 2, 0);
+            camera.lookAt(0, 2, 0);
+        }
+    } else {
+        createTarget();
+    }
+
+    // Create character
+    createCharacter();
+
+    // Reset game state
+    score = 0;
+    shotsFired = 0;
+    shotsHit = 0;
+    accuracy = 0;
+    gameTime = gameMode === 'free' ? Infinity : gameMode;
+    gameStarted = false;
+    targetStartedMoving = false;
+    player1Health = MAX_HEALTH;
+    player2Health = MAX_HEALTH;
+    player1Dead = false;
+    player2Dead = false;
+
+    document.querySelector('.score-display').textContent = `Score: ${score} | Accuracy: ${accuracy.toFixed(1)}%`;
+    if (gameMode !== 'free') {
+        document.querySelector('.time-display').textContent = `Time: ${gameMode}s`;
+    }
+
+    // Lock controls and start animation
+    controls.lock();
+    animate(0);
+
+    // Add pointer lock event listeners
+    document.addEventListener('pointerlockchange', onPointerLockChange);
+    document.addEventListener('pointerlockerror', onPointerLockError);
 }
 
 function checkPlayerHit() {
